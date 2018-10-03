@@ -52,6 +52,11 @@ namespace Kesco.Lib.Log
 		private const string WarningSQL = "Требуется обрабатывать SQL исключение так, чтобы в обработчик ошибок передавался наследник IDbCommand!";
 
         private SynchronizedCollection<SentMessage> _sentMessages = new SynchronizedCollection<SentMessage>();
+
+        /// <summary>
+        /// Имя домена, в контесте которого выполняется сборка
+        /// </summary>
+        private string _domain_name = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().DomainName;
         
 		/// <summary>
 		/// Названия сборок, разрабатываемых в компаниях Атэк-групп. Используется для опрекделения места ошибки на достаточно глубоком уровне.
@@ -162,14 +167,17 @@ namespace Kesco.Lib.Log
 					((XmlElement)xml.SelectSingleNode("Info/Node[@id='Priority']")).SetAttribute("value", pr);
 				}
                 if (pr == Enum.GetName(typeof(Priority), Priority.ExternalError))
-                    subject = "Error";
+                    subject = "Error ";
                 else if (pr == Enum.GetName(typeof(Priority), Priority.Info) || pr == Enum.GetName(typeof(Priority), Priority.Alarm))
                     subject = "*" + pr + "* ";
+
+                if (string.IsNullOrEmpty(_domain_name) && (pr == Enum.GetName(typeof(Priority), Priority.ExternalError) || pr == Enum.GetName(typeof(Priority), Priority.Alarm)))
+                    return;
 
 				XmlElement component = (XmlElement)xml.SelectSingleNode( "Info/Node[@id='Component']" );
 				string build = component != null ? component.GetAttribute( "value" ) : "";
 
-				subject += String.Format( "[{0}]{1}:{2}", _appName,
+				subject += String.Format((pr == Enum.GetName(typeof(Priority), Priority.Error) ? "[{0}]{1}:{2}" : "{2}"), _appName,
 					( build != "" ? "[" + build + "]" : "" ),
 					((XmlElement)xml.SelectSingleNode("Info")).GetAttribute("message")).Replace("\n", " ").Replace("\r", " ");
 
@@ -353,7 +361,15 @@ namespace Kesco.Lib.Log
 							if( declaringType != null )
 							{
 								string componentName = declaringType.Assembly.GetName( false ).Name;
-								if( kescoBuilds.IndexOf( componentName ) != -1 )
+								if( kescoBuilds.IndexOf( componentName ) == -1 )
+								{
+									//Повторная загрузка сборок авторства холдинга
+									kescoBuilds.Clear();
+									Assembly[] asms = AppDomain.CurrentDomain.GetAssemblies();
+									kescoBuilds.AddRange(asms.Where(a => a.GetCustomAttributes(typeof(AssemblyIsKescoAttribute), false).Length > 0 &&
+													(a.GetCustomAttributes(typeof(AssemblyIsKescoAttribute), false)[0] as AssemblyIsKescoAttribute).IsKesco).Select(a => a.GetName().Name).ToArray());
+								}
+								if (kescoBuilds.IndexOf(componentName) != -1)
 								{
 									build = declaringType.Assembly.GetName( false ).Name;
 									version = declaringType.Assembly.GetName().Version.ToString();
@@ -646,6 +662,18 @@ namespace Kesco.Lib.Log
 				System.Web.HttpRequest req = System.Web.HttpContext.Current.Request;
 				if( req != null )
 				{
+                    if (!string.IsNullOrEmpty(req.UserHostAddress))
+                    {
+                        try
+                        {
+                            IPHostEntry entry = Dns.GetHostEntry(req.UserHostAddress);
+                            string domname = (entry != null ? entry.HostName : "");
+                            domname = domname.Substring(domname.IndexOf(".") + 1);
+                            if (!domname.Equals(_domain_name, StringComparison.InvariantCultureIgnoreCase))
+                                _domain_name = "";
+                        }
+                        catch { }
+                    }
 					node = Document.CreateElement( "Node" );
 					node.SetAttribute( "id", "UserHostAddress" );
 					node.SetAttribute( "name", "UserHostAddress" );
