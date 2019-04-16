@@ -942,10 +942,10 @@ if (client != null) client.Dispose();
 
     internal class SentMessage
     {
-        private string _host;
-        private string _user;
-        private string _subj;
-        private string _meth;
+        private readonly string _host;
+        private readonly string _user;
+        private readonly string _subj;
+        private readonly string _meth;
         public DateTime DtCreate { get; private set; }
 
         internal SentMessage(string hst, string usr, string mth, string sbj)
@@ -965,11 +965,24 @@ if (client != null) client.Dispose();
         if(!(obj is SentMessage))
             return false;
 
-        SentMessage cmpr = obj as SentMessage;
+        var cmpr = obj as SentMessage;
         return	_host.Equals(cmpr._host, StringComparison.InvariantCultureIgnoreCase) && 
                 _user.Equals(cmpr._user, StringComparison.InvariantCultureIgnoreCase) &&
                 _subj.Equals(cmpr._subj, StringComparison.InvariantCultureIgnoreCase) &&
                 _meth.Equals(cmpr._meth, StringComparison.InvariantCultureIgnoreCase);
+        }
+        
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hashCode = (_host != null ? _host.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ (_user != null ? _user.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ (_subj != null ? _subj.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ (_meth != null ? _meth.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ DtCreate.GetHashCode();
+                return hashCode;
+            }
         }
     }
 }
