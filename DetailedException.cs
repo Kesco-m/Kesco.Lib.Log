@@ -72,8 +72,9 @@ namespace Kesco.Lib.Log
 					{
 						res += "\tSql Command:\n" + (ex as DetailedException).SqlCmd.CommandText + "\n";
 						res += "\tSql Connection:\n" + LogModule.ClearPassword( (ex as DetailedException).SqlCmd.Connection.ConnectionString ) + "\n";
+                        res += "\tSql Timeout:\n" + (ex as DetailedException).SqlCmd.CommandTimeout + " сек.\n";
 
-						string sParams = "";
+                        string sParams = "";
 						foreach( SqlParameter p in (ex as DetailedException).SqlCmd.Parameters )
 							sParams += String.Format( "{0}='{1}';\n", p.ParameterName, p.Value );
 

@@ -89,7 +89,6 @@ namespace Kesco.Lib.Log
 			}
 		}
 
-
 		/// <summary>
 		/// Конструктор
 		/// </summary>
@@ -129,7 +128,6 @@ namespace Kesco.Lib.Log
 					kescoBuilds.Add( asms[i].GetName().Name );
 			}
 		}
-
 
 		/// <summary>
 		/// Фиксация информации об исключении
@@ -240,7 +238,6 @@ namespace Kesco.Lib.Log
 			}
 		}
 
-
 		/// <summary>
 		/// Изменение состояния LogModule. Состояние выступает в роли счетчика и принимает только неотрицательные значения.
 		/// </summary>
@@ -250,7 +247,6 @@ namespace Kesco.Lib.Log
 			state += delta;
 			if( state < 0 ) state = 0;
 		}
-
 
 		/// <summary>
 		/// Формирование XML с описанием и цепочкой исключений, вызванных ошибкой
@@ -275,7 +271,9 @@ namespace Kesco.Lib.Log
 			{
 				exList.Insert( 0, ex );
 				ex = ex.InnerException;
-			}
+                if (ex != null && string.IsNullOrEmpty(ex.StackTrace))
+                    break;
+            }
 
 			XmlElement exceptions = Document.CreateElement( "Exceptions" );
 
@@ -299,7 +297,9 @@ namespace Kesco.Lib.Log
 						{
 							sendMail = !((SqlException)ex).Class.Equals(12);
 							SQLWarning = WarningSQL;
-						}
+                            hResult = ((SqlException)ex).Number;
+
+                        }
 						else if (ex is DetailedException)
 						{
 							sendMail = (ex as DetailedException).SendMail;
@@ -317,12 +317,15 @@ namespace Kesco.Lib.Log
 					}
 					else
 					{
-						if( ex is SqlException )
-							sendMail = !( (SqlException)ex ).Class.Equals(12);
-						else if( ex is DetailedException )
-							sendMail = ( ex as DetailedException ).SendMail;
-						else if( ex is LogicalException )
-							sendMail = true;
+                        if (ex is SqlException)
+                        {
+                            sendMail = !((SqlException)ex).Class.Equals(12);
+                            hResult = ((SqlException)ex).Number;
+                        }
+                        else if (ex is DetailedException)
+                            sendMail = (ex as DetailedException).SendMail;
+                        else if (ex is LogicalException)
+                            sendMail = true;
 					}
 				}
 				else
@@ -511,11 +514,16 @@ namespace Kesco.Lib.Log
 						node.SetAttribute( "id", "Command" );
 						node.SetAttribute( "code", "1" );
 						node.SetAttribute( "name", "Sql Command" );
-						node.SetAttribute("value", XmlTextEncoder.Encode(cmd.CommandText) ?? "");
+						node.SetAttribute("value", cmd != null ?  XmlTextEncoder.Encode(cmd.CommandText) : "");
 						exception.AppendChild( node );
 
+                        node = Document.CreateElement("Node");
+                        node.SetAttribute("id", "CommandTimeout");                        
+                        node.SetAttribute("name", "Sql Timeout");
+                        node.SetAttribute("value", cmd != null ? XmlTextEncoder.Encode(cmd.CommandTimeout.ToString() + " сек.") : "");
+                        exception.AppendChild(node);
 
-						if( cmd.Parameters != null && cmd.Parameters.Count > 0 )
+                        if ( cmd.Parameters != null && cmd.Parameters.Count > 0 )
 						{
 							string sParams = "";
 							foreach( SqlParameter p in cmd.Parameters )
@@ -719,7 +727,6 @@ namespace Kesco.Lib.Log
 			return Document.DocumentElement;
 		}
 
-
 		/// <summary>
 		/// Очистка пароля в строке
 		/// </summary>
@@ -731,23 +738,17 @@ namespace Kesco.Lib.Log
 				connString = str;
 			connString += ";";
 
-			//connString = @"Provider = SQLOLEDB;Data Source = myServerAddress;Initial Catalog = myDataBase;PWD=123456;User Id=myUsername; Password  =  myPassword;";
-
-			// replace whitespaces around '=' symbol: 'Password  =    myPassword;' replaced with 'Password=myPassword;'
 			Regex myRegex = new Regex(@"\s*=\s*", RegexOptions.IgnoreCase);
 			connString = myRegex.Replace(connString, "=");
 
-			// replace password marked with Password keyword: 'Password=myPassword;' replaced with 'Password=*****;'
 			myRegex = new Regex(@"Password=([^;]*);", RegexOptions.IgnoreCase);
 			connString = myRegex.Replace(connString, "Password=*****;");
 
-			// replace password marked with PWD keyword: 'PWD=12345;' replaced with 'PWD=*****;'
 			myRegex = new Regex(@"PWD=([^;]*);", RegexOptions.IgnoreCase);
 			connString = myRegex.Replace(connString, "PWD=*****;");
 
 			return connString.Substring(0, connString.Length - 1);
 		}
-
 
 		/// <summary>
 		/// Отправка сообщения через SMTP
@@ -779,20 +780,6 @@ namespace Kesco.Lib.Log
 		        ))
 		    {
 		        msg.IsBodyHtml = true;
-
-		        /* вариант не работает
-			msg.BodyEncoding = System.Text.Encoding.GetEncoding("koi8-r");
-			msg.BodyEncoding = System.Text.Encoding.Default;
-			msg.Headers["Content-type"] = "text/plain; charset=koi8-r";
-			*/
-
-		        /*вариант работает, но не подходит для эстонского
-			int codepage = 1251;
-			msg.BodyEncoding = System.Text.Encoding.GetEncoding(codepage);
-			//msg.SubjectEncoding = System.Text.Encoding.GetEncoding(codepage);
-			msg.Headers.Set("Content-Type", "text/plain; charset=windows-1251");
-			*/
-
 		        msg.BodyEncoding = System.Text.Encoding.UTF8;
 		        msg.Headers.Set("Content-Type", "text/plain; charset=UTF-8");
 
@@ -804,7 +791,7 @@ namespace Kesco.Lib.Log
                         
 		                client = new SmtpClient(_smtpServer);
 
-#if !NET_4_OR_GREATER					// Должен быть больше 2. Интервал во внутренней обработке объекта делится на 2.
+#if !NET_4_OR_GREATER	// Должен быть больше 2. Интервал во внутренней обработке объекта делится на 2.
 						client.ServicePoint.MaxIdleTime = 4;
 #endif
 						client.Send(msg);
@@ -853,7 +840,6 @@ if (client != null) client.Dispose();
 		    }
 		}
 
-
 		/// <summary>
 		/// Регистрация исключительных ситуаций, которые не удалось отправить в Email в EventLog
 		/// </summary>
@@ -871,7 +857,6 @@ if (client != null) client.Dispose();
 			}
 		}
 
-
 		/// <summary>
 		/// Вызов события реинициализаиции модуля регистрации исключительных ситуаций
 		/// </summary>
@@ -879,7 +864,6 @@ if (client != null) client.Dispose();
 		{
 			if( OnDispose != null ) OnDispose(this);
 		}
-
 
 		/// <summary>
 		/// Возвращает проставляемы приоритет ошибки в соответствии с регламентом
@@ -897,8 +881,13 @@ if (client != null) client.Dispose();
 			if (ex is SqlException && Enum.IsDefined(typeof(SqlErrors), ((SqlException)ex).Number))
 				return Priority.ExternalError;
 
-			if (ex.Message.Contains("provider: Named Pipes Provider, error: 40") || ex.Message.Contains("provider: Поставщик именованных каналов, error: 40"))
-				return Priority.ExternalError;
+			if (ex.Message.Contains("provider: Named Pipes Provider, error: 40") 
+                || ex.Message.Contains("provider: Поставщик именованных каналов, error: 40")
+                || ex.Message.Contains("Не обнаружен ключ защиты программы")
+                || ex.Message.Contains("Ошибка настройки маршрутизатора")
+                || ex.Message.Contains("Линия CTS не готова к приёму данных")
+                )
+                return Priority.ExternalError;
 
 			if (ex is SqlException && ex.StackTrace.Contains("System.Data.SqlClient.SqlConnection.Open()"))
 				return Priority.ExternalError;
@@ -914,7 +903,7 @@ if (client != null) client.Dispose();
 			if (hr == HRESULTs.COR_E_NOTSUPPORTED || hr == HRESULTs.COR_E_UNAUTHORIZEDACCESS || hr == HRESULTs.COR_E_TIMEOUT)
 				return Priority.ExternalError;
 
-			if (ex is SqlException && (/*hr == HRESULTs.COR_E_LOGIN_FAILED ||*/ hr == HRESULTs.COR_E_LOGIN_FAILED1))
+			if (ex is SqlException && (hr == HRESULTs.COR_E_LOGIN_FAILED1))
 				return Priority.ExternalError;
 
 			if (ex is System.Runtime.InteropServices.COMException && hr == HRESULTs.COR_E_SRV_NOT_OPERATIONAL)
@@ -929,7 +918,10 @@ if (client != null) client.Dispose();
 			if (ex is System.IO.IOException && hr == HRESULTs.COR_E_NET_NOT_REACHED)
 				return Priority.ExternalError;
 
-			if (ex is System.Net.WebException)
+            if (ex is System.IO.DirectoryNotFoundException || ex is System.IO.FileNotFoundException)
+                return Priority.ExternalError;
+
+            if (ex is System.Net.WebException)
 			{
 				System.Net.WebException we = ex as System.Net.WebException;
 				if (we.Status != System.Net.WebExceptionStatus.ProtocolError && we.Status != System.Net.WebExceptionStatus.UnknownError)
